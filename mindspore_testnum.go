@@ -27,24 +27,24 @@ var (
 
 // 如果符合条件，设置测试人数为：0
 func (bot *robot) setTestNumber(text, org, repo, author string, number int32) error {
+	var types []string
 	//check pr body
-	err := bot.checkPRBody(text, author)
+	types, err := bot.checkPRBody(text, author)
 	if err != nil {
 		return bot.client.CreatePRComment(org, repo, number, err.Error())
 	}
 
 	//检查是否存在refactor类型，更新测试人数和打标签
 	validTypes := sets.NewString(refactor, bug, feature, task)
-	matches := commonLabelRegex.FindAllStringSubmatch(text, -1)
-	for _, math := range matches {
-		if validTypes.HasAny(math[2]) {
-			if math[2] == refactor {
+	for _, typ := range types {
+		if validTypes.HasAny(typ) {
+			if typ == refactor {
 				err := bot.client.AddPRLabel(org, repo, number, labelGoodRefactor)
 				if err != nil {
 					logrus.Errorf("add label failed: %v", err)
 				}
 			}
-			if math[2] == feature {
+			if typ == feature {
 				err := bot.updateTestNumber(org, repo, number, 1)
 				if err != nil {
 					logrus.Errorf("update tester number failed: %v", err)
@@ -75,11 +75,11 @@ func (bot *robot) updateTestNumber(org, repo string, number int32, v int32) erro
 }
 
 // 检查PR描述内容是否符合规范
-func (bot *robot) checkPRBody(text, author string) error {
+func (bot *robot) checkPRBody(text, author string) ([]string, error) {
 	tittle1 := strings.Index(text, infoTittle)
 	tittle2 := strings.Index(text, issueTittle)
 	if tittle1 == -1 {
-		return fmt.Errorf("PR missing description information."+
+		return nil, fmt.Errorf("PR missing description information."+
 			"\n\nPlease add description of this pull request in pull request header."+
 			"\n1.The kind of the pull request must be filled.Availabel values **/kind feature**,**/kind bug**,**/kind refactor**,or **/kind task**."+
 			"\n2.The description must be filled also under **What does this PR do / why do we need it** section."+
@@ -94,7 +94,7 @@ func (bot *robot) checkPRBody(text, author string) error {
 	}
 	prContent2 := strings.ReplaceAll(strings.ReplaceAll(prContent, "\r\n", ""), ":", "")
 	if prContent2 == "" {
-		return fmt.Errorf("The introduction to PR is empty."+
+		return nil, fmt.Errorf("The introduction to PR is empty."+
 			"\n\nPlease add description of this pull request in pull request header."+
 			"\n1.The kind of the pull request must be filled.Availabel values **/kind feature**,**/kind bug**,**/kind refactor**,or **/kind task**."+
 			"\n2.The description must be filled also under **What does this PR do / why do we need it** section."+
@@ -106,7 +106,7 @@ func (bot *robot) checkPRBody(text, author string) error {
 	prTittle1 := strings.Index(text, typeTittle)
 	prTittle2 := strings.Index(text, infoTittle)
 	if prTittle1 == -1 {
-		return fmt.Errorf("PR does not have the content of \"What type of PR is this?\"."+
+		return nil, fmt.Errorf("PR does not have the content of \"What type of PR is this?\"."+
 			"\n\nPlease add description of this pull request in pull request header."+
 			"\n1.The kind of the pull request must be filled.Availabel values **/kind feature**,**/kind bug**,**/kind refactor**,or **/kind task**."+
 			"\n2.The description must be filled also under **What does this PR do / why do we need it** section."+
@@ -119,7 +119,7 @@ func (bot *robot) checkPRBody(text, author string) error {
 	re := regexp.MustCompile(`<!--.*?-->`)
 	prTypes = re.ReplaceAllString(prTypes, "")
 	if prTypes == "" {
-		return fmt.Errorf("PR type is missing."+
+		return nil, fmt.Errorf("PR type is missing."+
 			"\n\nPlease add description of this pull request in pull request header."+
 			"\n1.The kind of the pull request must be filled.Availabel values **/kind feature**,**/kind bug**,**/kind refactor**,or **/kind task**."+
 			"\n2.The description must be filled also under **What does this PR do / why do we need it** section."+
@@ -127,11 +127,11 @@ func (bot *robot) checkPRBody(text, author string) error {
 			"\nIf you still have any doubts, please consult @liuchongming74", author)
 	}
 	newType := strings.Split(prTypes, "/kind")
-	var result []string
+	var typeResult []string
 	for _, s := range newType {
 		trimmedString := strings.TrimSpace(s)
 		if trimmedString != "" {
-			result = append(result, trimmedString)
+			typeResult = append(typeResult, trimmedString)
 		}
 	}
 	validTypes := map[string]bool{
@@ -142,9 +142,9 @@ func (bot *robot) checkPRBody(text, author string) error {
 	}
 
 	prTypeCount := 0
-	for _, Type := range result {
+	for _, Type := range typeResult {
 		if _, ok := validTypes[Type]; !ok {
-			return fmt.Errorf("This type : **%s** is not a type specified by the template."+
+			return nil, fmt.Errorf("This type : **%s** is not a type specified by the template."+
 				"\n\nPlease add description of this pull request in pull request header."+
 				"\n1.The kind of the pull request must be filled.Availabel values **/kind feature**,**/kind bug**,**/kind refactor**,or **/kind task**."+
 				"\n2.The description must be filled also under **What does this PR do / why do we need it** section."+
@@ -157,7 +157,7 @@ func (bot *robot) checkPRBody(text, author string) error {
 		}
 	}
 	if prTypeCount > 1 {
-		return fmt.Errorf("Invalid PR information: Multiple type cannot coexist."+
+		return nil, fmt.Errorf("Invalid PR information: Multiple type cannot coexist."+
 			"\n\nPlease add description of this pull request in pull request header."+
 			"\n1.The kind of the pull request must be filled.Availabel values **/kind feature**,**/kind bug**,**/kind refactor**,or **/kind task**."+
 			"\n2.The description must be filled also under **What does this PR do / why do we need it** section."+
@@ -165,5 +165,5 @@ func (bot *robot) checkPRBody(text, author string) error {
 			"\nIf you still have any doubts, please consult @liuchongming74", author) // 同时存在多个不能共存类型标签，返回错误
 	}
 
-	return nil
+	return typeResult, nil
 }
