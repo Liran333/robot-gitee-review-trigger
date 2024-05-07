@@ -28,7 +28,7 @@ func (bot *robot) processNoteEvent(e *sdk.NoteEvent, cfg *botConfig, log *logrus
 
 	mr := multiError()
 
-	if info.hasCheckPRCmd() && cfg.CheckPRInfo {
+	if info.hasCheckPRCmd() || info.hasCanReviewCmd() && cfg.CheckPRInfo {
 		text := e.GetPullRequest().GetBody()
 		org, repo := e.GetOrgRepo()
 		author := e.GetPRAuthor()
